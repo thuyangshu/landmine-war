@@ -107,18 +107,6 @@ body {
 #speed-btn.active { border-color: #e8c44a; color: #e8c44a; }
 #speed-btn.hidden { display: none; }
 
-#start-wave-btn {
-    background: linear-gradient(180deg, #c44a1a 0%, #8b2e0a 100%);
-    color: #fff; border: 2px solid #e8773a; border-radius: 8px;
-    padding: 5px 14px; font-size: 13px; font-weight: bold;
-    cursor: pointer; font-family: inherit; transition: all 0.15s;
-}
-#start-wave-btn:active { transform: scale(0.95); }
-#start-wave-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-#start-wave-btn.in-wave {
-    background: linear-gradient(180deg, #555 0%, #333 100%);
-    border-color: #777;
-}
 
 /* === 弹窗 === */
 #message-overlay {
@@ -145,6 +133,11 @@ body {
     padding: 8px 24px; font-size: 15px; font-weight: bold;
     cursor: pointer; font-family: inherit;
 }
+#msg-exit {
+    margin-top: 10px; font-size: 11px; color: #7a7a5a;
+    cursor: pointer; letter-spacing: 2px;
+}
+#msg-exit:hover { color: #c4b998; }
 
 /* === Desktop: 矮屏优化 === */
 @media (max-height: 500px) {
@@ -273,10 +266,6 @@ body {
     #more-btn { display: flex; }
 
     /* 操作按钮紧凑化 */
-    #start-wave-btn {
-        padding: 4px 10px;
-        font-size: 12px;
-    }
     #speed-btn {
         padding: 2px 6px;
         font-size: 12px;

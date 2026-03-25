@@ -132,21 +132,7 @@
     canvas.addEventListener('mouseleave', () => { game.hoverTile = null; });
 
     // --- 按钮 ---
-    const startBtn = document.getElementById('start-wave-btn');
     const speedBtn = document.getElementById('speed-btn');
-
-    startBtn.addEventListener('click', () => {
-        if (game.state === 'prep') {
-            audioManager.init();
-            audioManager.resume();
-            if (!audioManager.bgmPlaying) {
-                audioManager.startBGM(game.level - 1);
-            }
-            game.startWave();
-            speedBtn.classList.remove('hidden');
-            document.getElementById('wave-preview').textContent = '';
-        }
-    });
 
     // --- 帮助 ---
     document.getElementById('help-btn').addEventListener('click', () => {
@@ -154,8 +140,8 @@
             '【目标】布置地雷阻击鬼子, 保卫村庄',
             '',
             '【操作】',
-            '  点"开始战斗" → 15秒倒计时布雷',
-            '  倒计时结束后敌人开始进攻',
+            '  每波开始有15秒布雷倒计时',
+            '  倒计时结束后敌人进攻',
             '  战斗中仍可补充布雷',
             '  点已有地雷可回收(退80%材料)',
             '',
@@ -165,8 +151,8 @@
             '',
             '【地雷策略】',
             '  🔥纯火药(反步兵, 工兵无法排除):',
-            '    ⚡绊雷 — 💥6 流血',
-            '    ◉土雷 — 💥10 碎片溅射',
+            '    ⚡绊雷 — 💥5 流血',
+            '    ◉土雷 — 💥8 碎片溅射',
             '  🔩偏铁(反车辆/装甲):',
             '    ⬢铁雷 — 🔩12💥4 通用, 削装甲',
             '    ⊕反坦克雷 — 🔩18💥4 仅车辆, 穿甲',
@@ -238,6 +224,13 @@
         speedBtn.classList.add('hidden');
         buildMineUI();
         updateWavePreview();
+        // 确保音频继续
+        audioManager.init();
+        audioManager.resume();
+        if (!audioManager.bgmPlaying) {
+            audioManager.startBGM(game.level - 1);
+        }
+        speedBtn.classList.remove('hidden');
     };
 
     // --- 游戏循环 ---
@@ -257,10 +250,14 @@
     // 开场提示
     setTimeout(() => {
         game.showMessage(`地雷战 — ${LEVEL_DEFS[0].name}`,
-            '鬼子要进村了!\n\n点"开始战斗"后有15秒布雷时间\n选择地雷 → 点路径布雷\n倒计时结束敌人开始进攻\n战斗中仍可补充布雷\n点已有地雷可回收(退80%材料)\n\n⚠️ 工兵会排雷, 注意纵深布置!\n房屋全毁则游戏结束\n\n共7关, 每关3波, 逐步解锁新装备',
+            '鬼子要进村了!\n\n【任务】布置地雷, 保卫村庄\n【规则】每波有15秒布雷时间\n　　　倒计时结束敌人进攻\n　　　战斗中仍可补充布雷\n　　　点已有地雷可回收\n\n绊雷/土雷无金属, 工兵无法排除\n反坦克雷仅对车辆, 对步兵无效\n\n共7关, 每关3波, 逐步解锁新装备\n房屋全毁则游戏结束',
             () => {
                 audioManager.init();
                 audioManager.resume();
-            });
+                audioManager.startBGM(0);
+                speedBtn.classList.remove('hidden');
+                game.startWave();
+            },
+            '开始游戏');
     }, 300);
 })();

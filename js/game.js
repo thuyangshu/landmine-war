@@ -156,10 +156,6 @@ class Game {
         this.spawnQueue.sort((a, b) => (pri[a.type]??99) - (pri[b.type]??99));
         this.spawnTimer = 0;
 
-        const btn = document.getElementById('start-wave-btn');
-        btn.textContent = `布雷! ${Math.ceil(this.countdownTimer)}s`;
-        btn.disabled = true;
-        btn.classList.add('in-wave');
     }
 
     spawnEnemy(type, pathIdx) {
@@ -183,17 +179,9 @@ class Game {
         // 倒计时阶段: 玩家布雷, 敌人未出现
         if (this.state === 'countdown') {
             this.countdownTimer -= dt;
-            const btn = document.getElementById('start-wave-btn');
-            const sec = Math.ceil(this.countdownTimer);
-            if (sec <= 5) {
-                btn.textContent = `敌军接近! ${sec}s`;
-            } else {
-                btn.textContent = `布雷! ${sec}s`;
-            }
             if (this.countdownTimer <= 0) {
                 this.countdownTimer = 0;
                 this.state = 'wave';
-                btn.textContent = '战斗中...';
             }
         }
 
@@ -659,12 +647,10 @@ class Game {
                     this.loadLevel(nextLevel);
                     this.resetWaveStats();
                     this.updateUI();
-                    const btn = document.getElementById('start-wave-btn');
-                    btn.textContent = '开始战斗!';
-                    btn.disabled = false;
-                    btn.classList.remove('in-wave');
                     if (this.onWaveReset) this.onWaveReset();
-                }
+                    this.startWave();
+                },
+                '继续战斗'
             );
         } else {
             this.showMessage(
@@ -673,12 +659,10 @@ class Game {
                 () => {
                     this.resetWaveStats();
                     this.updateUI();
-                    const btn = document.getElementById('start-wave-btn');
-                    btn.textContent = '开始战斗!';
-                    btn.disabled = false;
-                    btn.classList.remove('in-wave');
                     if (this.onWaveReset) this.onWaveReset();
-                }
+                    this.startWave();
+                },
+                '继续战斗'
             );
         }
     }
@@ -688,7 +672,7 @@ class Game {
         const report = this.generateBattleReport();
         this.showMessage('村庄沦陷!',
             `房屋全部被烧毁!\n坚守到第${this.level}关 第${this.waveInLevel + 1}波\n得分: ${this.score}\n\n${report}`,
-            () => location.reload());
+            () => location.reload(), '重新开始');
     }
 
     victory() {
@@ -697,15 +681,16 @@ class Game {
         const report = this.generateBattleReport();
         this.showMessage('伟大胜利!',
             `成功保卫村庄, 击退全部${LEVEL_DEFS.length}关!\n得分: ${this.score}  剩余房屋: ${this.housesLeft}\n\n${report}`,
-            () => location.reload());
+            () => location.reload(), '再来一局');
     }
 
-    showMessage(title, text, cb) {
+    showMessage(title, text, cb, btnText) {
         const ov = document.getElementById('message-overlay');
         document.getElementById('msg-title').textContent = title;
         document.getElementById('msg-text').textContent = text;
-        ov.classList.remove('hidden');
         const btn = document.getElementById('msg-btn');
+        btn.textContent = btnText || '继续';
+        ov.classList.remove('hidden');
         const handler = () => { ov.classList.add('hidden'); btn.removeEventListener('click', handler); if (cb) cb(); };
         btn.addEventListener('click', handler);
     }

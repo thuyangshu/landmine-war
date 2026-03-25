@@ -27,13 +27,13 @@ const CONFIG = {
 const MINE_TYPES = {
     trip: {
         name: '绊雷', icon: '⚡', color: '#e8c44a',
-        damage: 60, radius: 0.6, iron: 0, powder: 6, armTime: 1.5,
+        damage: 60, radius: 0.6, iron: 0, powder: 5, armTime: 1.5,
         desc: '纯火药, 流血, 防排雷',
         special: 'bleed', bleedDmg: 8, bleedTime: 3, footOnly: true, noMetal: true,
     },
     dirt: {
         name: '土雷', icon: '◉', color: '#9a8060',
-        damage: 100, radius: 1.0, iron: 0, powder: 10, armTime: 2.0,
+        damage: 100, radius: 1.0, iron: 0, powder: 8, armTime: 2.0,
         desc: '纯火药, 溅射, 防排雷',
         special: 'shrapnel', shrapCount: 3, shrapDmg: 25, footOnly: true, noMetal: true,
     },
