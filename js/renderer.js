@@ -24,7 +24,8 @@ class Renderer {
         this.drawEffects();
         this.drawFloatingTexts();
         this.drawHoverPreview();
-        if (g.state === 'prep' || g.state === 'wave') this.drawPrepIndicator();
+        if (g.state === 'prep' || g.state === 'countdown' || g.state === 'wave') this.drawPrepIndicator();
+        if (g.state === 'countdown') this.drawCountdown();
     }
 
     // ===== 地图 =====
@@ -63,9 +64,9 @@ class Renderer {
                         ctx.fillStyle = '#aa3333';
                         ctx.globalAlpha = 0.5 + 0.3 * Math.sin(this.animTime * 3);
                         ctx.beginPath();
-                        ctx.moveTo(x + ts * 0.2, y + ts * 0.3);
-                        ctx.lineTo(x + ts * 0.7, y + ts * 0.5);
-                        ctx.lineTo(x + ts * 0.2, y + ts * 0.7);
+                        ctx.moveTo(x + ts * 0.3, y + ts * 0.2);
+                        ctx.lineTo(x + ts * 0.5, y + ts * 0.7);
+                        ctx.lineTo(x + ts * 0.7, y + ts * 0.2);
                         ctx.fill();
                         ctx.globalAlpha = 1;
                         break;
@@ -152,9 +153,9 @@ class Renderer {
             }
             ctx.stroke();
         }
-        // 路线标签 (按起始行排序)
-        const sorted = paths.map((p, i) => ({idx: i, row: p[0][1]})).sort((a, b) => a.row - b.row);
-        const labelSets = {2:['北路','南路'], 3:['北路','中路','南路'], 4:['北路','中北路','中南路','南路']};
+        // 路线标签 (按起始列排序)
+        const sorted = paths.map((p, i) => ({idx: i, col: p[0][0]})).sort((a, b) => a.col - b.col);
+        const labelSets = {2:['左路','右路'], 3:['左路','中路','右路'], 4:['左路','中左路','中右路','右路']};
         const labels = labelSets[paths.length] || sorted.map((_, i) => `${i+1}路`);
         ctx.font = `bold ${Math.max(10, Math.floor(ts * 0.32))}px sans-serif`;
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -209,7 +210,7 @@ class Renderer {
         }
     }
 
-    // ===== 敌人 =====
+    // ===== 敌人 (俯视视角) =====
     drawEnemies() {
         const g = this.game, ctx = this.ctx, ts = g.tileSize;
         for (const enemy of g.enemies) {
@@ -219,39 +220,58 @@ class Renderer {
             const cy = g.offsetY + (enemy.y + 0.5) * ts;
             const sz = ts * et.size;
 
-            ctx.save();
+            // 计算移动方向角度
+            let angle = Math.PI / 2; // 默认朝下
+            const path = enemy.path;
+            if (path && path.length > 1) {
+                const pi = Math.floor(enemy.pathProgress);
+                const i0 = Math.min(pi, path.length - 1);
+                const i1 = Math.min(pi + 1, path.length - 1);
+                if (i0 !== i1) {
+                    const dx = path[i1].col - path[i0].col;
+                    const dy = path[i1].row - path[i0].row;
+                    angle = Math.atan2(dy, dx);
+                }
+            }
 
+            // 受击闪白 & 眩晕环 (不旋转)
+            ctx.save();
             if (enemy.hitFlash > 0) {
                 ctx.globalAlpha = 0.5;
                 ctx.fillStyle = '#fff';
                 ctx.beginPath(); ctx.arc(cx, cy, sz + 3, 0, Math.PI * 2); ctx.fill();
                 ctx.globalAlpha = 1;
             }
-
             if (enemy.stunTimer > 0) {
                 ctx.strokeStyle = '#ffe844'; ctx.lineWidth = 2;
                 ctx.setLineDash([3, 3]);
                 ctx.beginPath(); ctx.arc(cx, cy, sz + 4 + Math.sin(this.animTime * 10) * 2, 0, Math.PI * 2); ctx.stroke();
                 ctx.setLineDash([]);
             }
+            ctx.restore();
 
             const c1 = enemy.hitFlash > 0 ? '#ff8866' : et.baseColor;
             const c2 = et.darkColor;
 
-            switch (enemy.type) {
-                case 'infantry': this.drawInfantry(cx, cy, sz, c1, c2); break;
-                case 'cavalry': this.drawCavalry(cx, cy, sz, c1, c2); break;
-                case 'engineer': this.drawEngineer(cx, cy, sz, c1, c2, enemy); break;
-                case 'truck': this.drawTruck(cx, cy, sz, c1, c2); break;
-                case 'armored': this.drawArmored(cx, cy, sz, c1, c2); break;
-                case 'lightTank': this.drawTank(cx, cy, sz, c1, c2); break;
-                case 'heavyTank': this.drawHeavyTank(cx, cy, sz, c1, c2); break;
-                case 'sweeper': this.drawSweeper(cx, cy, sz, c1, c2); break;
-            }
+            // 旋转绘制精灵 (精灵默认朝下 = +y)
+            ctx.save();
+            ctx.translate(cx, cy);
+            ctx.rotate(angle - Math.PI / 2);
 
-            // 血条
-            ctx.globalAlpha = 1;
-            ctx.setLineDash([]);
+            switch (enemy.type) {
+                case 'infantry': this.drawInfantry(sz, c1, c2, enemy); break;
+                case 'cavalry': this.drawCavalry(sz, c1, c2, enemy); break;
+                case 'engineer': this.drawEngineer(sz, c1, c2, enemy); break;
+                case 'truck': this.drawTruck(sz, c1, c2); break;
+                case 'armored': this.drawArmored(sz, c1, c2); break;
+                case 'lightTank': this.drawTank(sz, c1, c2); break;
+                case 'heavyTank': this.drawHeavyTank(sz, c1, c2); break;
+                case 'sweeper': this.drawSweeper(sz, c1, c2); break;
+            }
+            ctx.restore();
+
+            // 状态指示 (始终正向, 不旋转)
+            ctx.save();
             const hpPct = enemy.hp / enemy.maxHp;
             const bw = Math.max(sz * 2.2, 18), bh = 4;
             const bx = cx - bw / 2, by = cy - sz - 10;
@@ -264,387 +284,438 @@ class Renderer {
                 ctx.textAlign = 'center';
                 ctx.fillText('🩸', cx + sz, cy - sz);
             }
-
             if (enemy.disarming) {
                 ctx.fillStyle = '#ff0'; ctx.font = `bold ${Math.floor(ts * 0.22)}px sans-serif`;
                 ctx.textAlign = 'center';
                 ctx.fillText('🔧', cx, cy - sz - 14);
             }
-
             if (enemy.blockTarget && enemy.blockTimer > 0) {
                 ctx.fillStyle = '#ffaa00'; ctx.font = `${Math.floor(ts * 0.2)}px sans-serif`;
                 ctx.textAlign = 'center';
                 ctx.fillText('⏳', cx - sz, cy - sz);
             }
-
-            // 扫雷范围指示
             if (et.sweepRange) {
                 ctx.globalAlpha = 0.12;
-                ctx.strokeStyle = '#ff4444';
-                ctx.lineWidth = 1;
+                ctx.strokeStyle = '#ff4444'; ctx.lineWidth = 1;
                 ctx.setLineDash([4, 4]);
-                ctx.beginPath();
-                ctx.arc(cx, cy, et.sweepRange * ts, 0, Math.PI * 2);
-                ctx.stroke();
-                ctx.setLineDash([]);
-                ctx.globalAlpha = 1;
+                ctx.beginPath(); ctx.arc(cx, cy, et.sweepRange * ts, 0, Math.PI * 2); ctx.stroke();
+                ctx.setLineDash([]); ctx.globalAlpha = 1;
             }
-
             ctx.restore();
         }
     }
 
-    // --- 通用士兵身体 ---
-    _drawSoldier(cx, cy, sz, bodyColor, helmetColor) {
+    // --- 俯视通用士兵 (原点绘制, 朝下 = +y) ---
+    _drawSoldier(sz, bodyColor, helmetColor) {
         const ctx = this.ctx;
-        const headR = sz * 0.22;
-        const headY = cy - sz * 0.35;
-        const bodyTop = headY + headR * 0.6;
-        const bodyW = sz * 0.44;
-        const bodyH = sz * 0.5;
-        const bodyBot = bodyTop + bodyH;
-        const legLen = sz * 0.35;
-        ctx.strokeStyle = bodyColor; ctx.lineWidth = Math.max(2, sz * 0.12); ctx.lineCap = 'round';
-        ctx.beginPath(); ctx.moveTo(cx - bodyW * 0.25, bodyBot); ctx.lineTo(cx - bodyW * 0.3, bodyBot + legLen); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(cx + bodyW * 0.25, bodyBot); ctx.lineTo(cx + bodyW * 0.3, bodyBot + legLen); ctx.stroke();
+        const walk = Math.sin(this.animTime * 8) * sz * 0.15;
+
+        // 腿 (行走动画)
+        ctx.strokeStyle = bodyColor; ctx.lineWidth = Math.max(2, sz * 0.14); ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(-sz * 0.1, sz * 0.12); ctx.lineTo(-sz * 0.12, sz * 0.38 + walk); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(sz * 0.1, sz * 0.12); ctx.lineTo(sz * 0.12, sz * 0.38 - walk); ctx.stroke();
+        // 靴子
         ctx.fillStyle = '#2a2a1a';
-        ctx.fillRect(cx - bodyW * 0.3 - sz * 0.05, bodyBot + legLen - sz * 0.06, sz * 0.14, sz * 0.08);
-        ctx.fillRect(cx + bodyW * 0.3 - sz * 0.08, bodyBot + legLen - sz * 0.06, sz * 0.14, sz * 0.08);
-        ctx.fillStyle = bodyColor; ctx.strokeStyle = '#111'; ctx.lineWidth = 1;
-        ctx.fillRect(cx - bodyW * 0.5, bodyTop, bodyW, bodyH);
-        ctx.strokeRect(cx - bodyW * 0.5, bodyTop, bodyW, bodyH);
-        ctx.fillStyle = '#4a3a1a';
-        ctx.fillRect(cx - bodyW * 0.5, bodyTop + bodyH * 0.7, bodyW, sz * 0.06);
-        ctx.fillStyle = '#d4a574'; ctx.strokeStyle = '#111'; ctx.lineWidth = 0.8;
-        ctx.beginPath(); ctx.arc(cx, headY, headR, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-        ctx.fillStyle = helmetColor;
-        ctx.beginPath(); ctx.arc(cx, headY - headR * 0.15, headR * 1.15, Math.PI, 0); ctx.fill();
-        ctx.strokeStyle = '#111'; ctx.lineWidth = 0.8; ctx.stroke();
-        ctx.fillRect(cx - headR * 1.3, headY - headR * 0.15, headR * 2.6, headR * 0.22);
-        ctx.strokeStyle = bodyColor; ctx.lineWidth = Math.max(2, sz * 0.1); ctx.lineCap = 'round';
-        ctx.beginPath(); ctx.moveTo(cx - bodyW * 0.5, bodyTop + bodyH * 0.15);
-        ctx.lineTo(cx - bodyW * 0.8, bodyTop + bodyH * 0.6); ctx.stroke();
-        return { headY, bodyTop, bodyBot, bodyW, bodyH, headR };
-    }
+        ctx.beginPath(); ctx.arc(-sz * 0.12, sz * 0.4 + walk, sz * 0.06, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(sz * 0.12, sz * 0.4 - walk, sz * 0.06, 0, Math.PI * 2); ctx.fill();
 
-    drawInfantry(cx, cy, sz, c1, c2) {
-        const ctx = this.ctx;
-        ctx.save();
-        const b = this._drawSoldier(cx, cy, sz, c1, c2);
-        ctx.strokeStyle = c1; ctx.lineWidth = Math.max(2, sz * 0.1); ctx.lineCap = 'round';
-        ctx.beginPath(); ctx.moveTo(cx + b.bodyW * 0.5, b.bodyTop + b.bodyH * 0.15);
-        ctx.lineTo(cx + sz * 0.45, b.bodyTop + b.bodyH * 0.45); ctx.stroke();
-        ctx.strokeStyle = '#5a4a2a'; ctx.lineWidth = Math.max(1.5, sz * 0.07);
-        ctx.beginPath(); ctx.moveTo(cx + sz * 0.2, b.bodyBot - sz * 0.05);
-        ctx.lineTo(cx + sz * 0.5, b.headY - sz * 0.2); ctx.stroke();
-        ctx.strokeStyle = '#ccc'; ctx.lineWidth = Math.max(1, sz * 0.04);
-        ctx.beginPath(); ctx.moveTo(cx + sz * 0.5, b.headY - sz * 0.2);
-        ctx.lineTo(cx + sz * 0.55, b.headY - sz * 0.45); ctx.stroke();
-        ctx.restore();
-    }
-
-    drawCavalry(cx, cy, sz, c1, c2) {
-        const ctx = this.ctx;
-        ctx.save();
-        const mw = sz * 1.2, mh = sz * 0.45;
-        const my = cy + sz * 0.2;
-        ctx.strokeStyle = '#5a3a1a'; ctx.lineWidth = Math.max(2, sz * 0.1); ctx.lineCap = 'round';
-        for (const lx of [-0.6, -0.2, 0.2, 0.55]) {
-            ctx.beginPath(); ctx.moveTo(cx + mw * lx, my + mh * 0.6);
-            ctx.lineTo(cx + mw * lx, my + mh + sz * 0.35); ctx.stroke();
-        }
-        ctx.fillStyle = '#222';
-        for (const lx of [-0.6, -0.2, 0.2, 0.55]) {
-            ctx.beginPath(); ctx.arc(cx + mw * lx, my + mh + sz * 0.35, sz * 0.04, 0, Math.PI * 2); ctx.fill();
-        }
-        ctx.fillStyle = '#7a5a2a'; ctx.strokeStyle = '#111'; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.ellipse(cx, my, mw, mh, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-        ctx.fillStyle = '#8a6a3a';
-        ctx.beginPath(); ctx.ellipse(cx + mw + sz * 0.15, my - mh * 0.3, sz * 0.22, sz * 0.16, -0.4, 0, Math.PI * 2);
+        // 躯干
+        ctx.fillStyle = bodyColor; ctx.strokeStyle = '#111'; ctx.lineWidth = 0.8;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, sz * 0.2, sz * 0.18, 0, 0, Math.PI * 2);
         ctx.fill(); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(cx + mw + sz * 0.15, my - mh * 0.5);
-        ctx.lineTo(cx + mw + sz * 0.08, my - mh * 0.8);
-        ctx.lineTo(cx + mw + sz * 0.22, my - mh * 0.55); ctx.fill();
-        ctx.fillStyle = '#111';
-        ctx.beginPath(); ctx.arc(cx + mw + sz * 0.22, my - mh * 0.35, sz * 0.03, 0, Math.PI * 2); ctx.fill();
+
+        // 腰带
         ctx.strokeStyle = '#4a3a1a'; ctx.lineWidth = Math.max(1.5, sz * 0.06);
-        ctx.beginPath(); ctx.moveTo(cx - mw, my);
-        ctx.quadraticCurveTo(cx - mw - sz * 0.3, my + sz * 0.2, cx - mw - sz * 0.15, my + sz * 0.4); ctx.stroke();
-        const riderY = my - mh - sz * 0.15;
-        ctx.fillStyle = c1; ctx.strokeStyle = '#111'; ctx.lineWidth = 1;
-        ctx.fillRect(cx - sz * 0.15, riderY, sz * 0.3, sz * 0.35);
-        ctx.strokeRect(cx - sz * 0.15, riderY, sz * 0.3, sz * 0.35);
-        ctx.fillStyle = '#d4a574';
-        ctx.beginPath(); ctx.arc(cx, riderY - sz * 0.08, sz * 0.14, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = '#111'; ctx.lineWidth = 0.8; ctx.stroke();
-        ctx.fillStyle = c2;
-        ctx.beginPath(); ctx.arc(cx, riderY - sz * 0.12, sz * 0.16, Math.PI, 0); ctx.fill();
-        ctx.strokeStyle = '#ddd'; ctx.lineWidth = Math.max(1.5, sz * 0.05);
-        ctx.beginPath(); ctx.moveTo(cx + sz * 0.15, riderY + sz * 0.1);
-        ctx.lineTo(cx + sz * 0.7, riderY - sz * 0.3); ctx.stroke();
-        ctx.strokeStyle = '#8a6a2a'; ctx.lineWidth = Math.max(2, sz * 0.07);
-        ctx.beginPath(); ctx.moveTo(cx + sz * 0.15, riderY + sz * 0.1);
-        ctx.lineTo(cx + sz * 0.1, riderY + sz * 0.18); ctx.stroke();
-        ctx.restore();
+        ctx.beginPath(); ctx.moveTo(-sz * 0.2, sz * 0.08); ctx.lineTo(sz * 0.2, sz * 0.08); ctx.stroke();
+
+        // 手臂 (行走摆动)
+        ctx.strokeStyle = bodyColor; ctx.lineWidth = Math.max(2, sz * 0.1); ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(-sz * 0.22, -sz * 0.02); ctx.lineTo(-sz * 0.32, sz * 0.12 - walk * 0.4); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(sz * 0.22, -sz * 0.02); ctx.lineTo(sz * 0.32, sz * 0.12 + walk * 0.4); ctx.stroke();
+
+        // 头/钢盔 (俯视: 圆形钢盔覆盖头顶)
+        ctx.fillStyle = helmetColor; ctx.strokeStyle = '#111'; ctx.lineWidth = 0.8;
+        ctx.beginPath(); ctx.arc(0, -sz * 0.22, sz * 0.17, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        // 钢盔帽檐
+        ctx.beginPath();
+        ctx.ellipse(0, -sz * 0.18, sz * 0.19, sz * 0.08, 0, -Math.PI * 0.15, Math.PI * 1.15);
+        ctx.stroke();
     }
 
-    drawEngineer(cx, cy, sz, c1, c2, enemy) {
+    // --- 俯视步兵 ---
+    drawInfantry(sz, c1, c2, enemy) {
         const ctx = this.ctx;
-        ctx.save();
-        const b = this._drawSoldier(cx, cy, sz, c1, c2);
-        ctx.strokeStyle = c1; ctx.lineWidth = Math.max(2, sz * 0.1); ctx.lineCap = 'round';
-        ctx.beginPath(); ctx.moveTo(cx + b.bodyW * 0.5, b.bodyTop + b.bodyH * 0.15);
-        ctx.lineTo(cx + sz * 0.45, b.bodyTop + b.bodyH * 0.5); ctx.stroke();
-        ctx.strokeStyle = '#888'; ctx.lineWidth = Math.max(2, sz * 0.08);
-        ctx.beginPath(); ctx.moveTo(cx + sz * 0.3, b.bodyBot);
-        ctx.lineTo(cx + sz * 0.45, b.headY); ctx.stroke();
-        ctx.strokeStyle = '#aaa'; ctx.lineWidth = Math.max(2.5, sz * 0.12);
-        ctx.beginPath(); ctx.moveTo(cx + sz * 0.42, b.headY + sz * 0.05);
-        ctx.lineTo(cx + sz * 0.48, b.headY - sz * 0.08); ctx.stroke();
+        this._drawSoldier(sz, c1, c2);
+        // 步枪 (斜背在身上, 从右肩到左腰)
+        ctx.strokeStyle = '#5a4a2a'; ctx.lineWidth = Math.max(1.5, sz * 0.06);
+        ctx.beginPath(); ctx.moveTo(sz * 0.12, -sz * 0.15); ctx.lineTo(-sz * 0.08, sz * 0.22); ctx.stroke();
+        // 枪管尖端
+        ctx.strokeStyle = '#888'; ctx.lineWidth = Math.max(1, sz * 0.04);
+        ctx.beginPath(); ctx.moveTo(sz * 0.12, -sz * 0.15); ctx.lineTo(sz * 0.16, -sz * 0.28); ctx.stroke();
+    }
+
+    // --- 俯视骑兵 ---
+    drawCavalry(sz, c1, c2, enemy) {
+        const ctx = this.ctx;
+        const walk = Math.sin(this.animTime * 6) * sz * 0.1;
+
+        // 马腿 (四条, 交替运动)
+        ctx.strokeStyle = '#5a3a1a'; ctx.lineWidth = Math.max(2, sz * 0.08); ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(-sz * 0.22, sz * 0.25); ctx.lineTo(-sz * 0.32, sz * 0.42 + walk); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(sz * 0.22, sz * 0.25); ctx.lineTo(sz * 0.32, sz * 0.42 - walk); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(-sz * 0.18, -sz * 0.2); ctx.lineTo(-sz * 0.28, -sz * 0.38 - walk); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(sz * 0.18, -sz * 0.2); ctx.lineTo(sz * 0.28, -sz * 0.38 + walk); ctx.stroke();
+
+        // 马身 (纵向椭圆)
+        ctx.fillStyle = '#7a5a2a'; ctx.strokeStyle = '#111'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.ellipse(0, 0, sz * 0.22, sz * 0.42, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+        // 马头 (前方 = +y)
+        ctx.fillStyle = '#8a6a3a'; ctx.strokeStyle = '#111'; ctx.lineWidth = 0.8;
+        ctx.beginPath(); ctx.ellipse(0, sz * 0.5, sz * 0.1, sz * 0.15, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        // 耳朵
+        ctx.fillStyle = '#6a4a2a';
+        ctx.beginPath(); ctx.ellipse(-sz * 0.07, sz * 0.62, sz * 0.03, sz * 0.05, -0.3, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(sz * 0.07, sz * 0.62, sz * 0.03, sz * 0.05, 0.3, 0, Math.PI * 2); ctx.fill();
+
+        // 马尾 (后方 = -y)
+        ctx.strokeStyle = '#4a3a1a'; ctx.lineWidth = Math.max(1.5, sz * 0.05);
+        ctx.beginPath(); ctx.moveTo(0, -sz * 0.42);
+        ctx.quadraticCurveTo(-sz * 0.12, -sz * 0.58, -sz * 0.08, -sz * 0.68); ctx.stroke();
+
+        // 骑手身体
+        ctx.fillStyle = c1; ctx.strokeStyle = '#111'; ctx.lineWidth = 0.8;
+        ctx.beginPath(); ctx.ellipse(0, -sz * 0.02, sz * 0.14, sz * 0.12, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+        // 骑手头 (钢盔)
+        ctx.fillStyle = c2; ctx.strokeStyle = '#111'; ctx.lineWidth = 0.8;
+        ctx.beginPath(); ctx.arc(0, -sz * 0.02, sz * 0.1, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+        // 军刀 (右侧)
+        ctx.strokeStyle = '#ccc'; ctx.lineWidth = Math.max(1.5, sz * 0.05);
+        ctx.beginPath(); ctx.moveTo(sz * 0.16, -sz * 0.05); ctx.lineTo(sz * 0.35, sz * 0.2); ctx.stroke();
+    }
+
+    // --- 俯视工兵 ---
+    drawEngineer(sz, c1, c2, enemy) {
+        const ctx = this.ctx;
+        this._drawSoldier(sz, c1, c2);
+
+        // 探雷杆 (向前方 = +y 伸出)
+        ctx.strokeStyle = '#888'; ctx.lineWidth = Math.max(2, sz * 0.07);
+        ctx.beginPath(); ctx.moveTo(sz * 0.15, sz * 0.05); ctx.lineTo(sz * 0.18, sz * 0.55); ctx.stroke();
+        // 探雷盘
+        ctx.strokeStyle = '#aaa'; ctx.lineWidth = Math.max(2, sz * 0.09);
+        ctx.beginPath(); ctx.arc(sz * 0.18, sz * 0.6, sz * 0.1, 0, Math.PI * 2); ctx.stroke();
+
+        // 工具包 (背上)
         ctx.fillStyle = '#6a5a3a'; ctx.strokeStyle = '#111'; ctx.lineWidth = 0.8;
-        ctx.fillRect(cx - b.bodyW * 0.55 - sz * 0.1, b.bodyTop + b.bodyH * 0.1, sz * 0.12, b.bodyH * 0.6);
-        ctx.strokeRect(cx - b.bodyW * 0.55 - sz * 0.1, b.bodyTop + b.bodyH * 0.1, sz * 0.12, b.bodyH * 0.6);
+        ctx.fillRect(-sz * 0.28, -sz * 0.12, sz * 0.12, sz * 0.2);
+        ctx.strokeRect(-sz * 0.28, -sz * 0.12, sz * 0.12, sz * 0.2);
+
+        // 排雷次数
         if (enemy.disarmCharges > 0) {
-            ctx.fillStyle = '#ff0'; ctx.font = `bold ${Math.max(8, Math.floor(sz * 0.6))}px sans-serif`;
+            ctx.fillStyle = '#ff0'; ctx.font = `bold ${Math.max(8, Math.floor(sz * 0.55))}px sans-serif`;
             ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillText(`${enemy.disarmCharges}`, cx + sz * 0.7, b.headY - sz * 0.15);
+            ctx.fillText(`${enemy.disarmCharges}`, sz * 0.4, -sz * 0.35);
         }
-        ctx.restore();
     }
 
-    drawTruck(cx, cy, sz, c1, c2) {
+    // --- 俯视卡车 ---
+    drawTruck(sz, c1, c2) {
         const ctx = this.ctx;
-        ctx.save();
-        const w = sz * 1.6, h = sz * 0.9;
+        const w = sz * 0.45, h = sz * 0.8;
+
+        // 车轮 (两侧各2-3个)
         ctx.fillStyle = '#1a1a1a';
-        for (const wx of [-0.45, -0.15, 0.35, 0.55]) {
-            ctx.beginPath(); ctx.arc(cx + w * wx, cy + h * 0.55, sz * 0.13, 0, Math.PI * 2); ctx.fill();
-            ctx.fillStyle = '#444';
-            ctx.beginPath(); ctx.arc(cx + w * wx, cy + h * 0.55, sz * 0.06, 0, Math.PI * 2); ctx.fill();
-            ctx.fillStyle = '#1a1a1a';
+        for (const wy of [-0.35, 0.05, 0.35]) {
+            ctx.beginPath(); ctx.arc(-w - sz * 0.06, h * wy, sz * 0.08, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(w + sz * 0.06, h * wy, sz * 0.08, 0, Math.PI * 2); ctx.fill();
         }
-        ctx.fillStyle = '#3a3a3a';
-        ctx.fillRect(cx - w * 0.55, cy + h * 0.3, w * 1.2, h * 0.15);
+
+        // 车身 (货厢 = 后方-y, 驾驶室 = 前方+y)
+        // 货厢
         ctx.fillStyle = '#6a6a5a'; ctx.strokeStyle = '#111'; ctx.lineWidth = 1.5;
-        ctx.fillRect(cx - w * 0.55, cy - h * 0.35, w * 0.75, h * 0.7);
-        ctx.strokeRect(cx - w * 0.55, cy - h * 0.35, w * 0.75, h * 0.7);
-        ctx.fillStyle = '#8a8a6a'; ctx.strokeStyle = '#666'; ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(cx - w * 0.55, cy - h * 0.35);
-        ctx.quadraticCurveTo(cx - w * 0.18, cy - h * 0.75, cx + w * 0.2, cy - h * 0.35);
-        ctx.fill(); ctx.stroke();
+        ctx.fillRect(-w, -h * 0.65, w * 2, h * 0.75);
+        ctx.strokeRect(-w, -h * 0.65, w * 2, h * 0.75);
+        // 帆布篷
+        ctx.strokeStyle = '#8a8a6a'; ctx.lineWidth = 1;
+        for (let i = 0; i < 4; i++) {
+            const ly = -h * 0.6 + i * h * 0.18;
+            ctx.beginPath(); ctx.moveTo(-w * 0.85, ly); ctx.lineTo(w * 0.85, ly); ctx.stroke();
+        }
+
+        // 驾驶室
         ctx.fillStyle = c1; ctx.strokeStyle = '#111'; ctx.lineWidth = 1.5;
-        ctx.fillRect(cx + w * 0.22, cy - h * 0.3, w * 0.35, h * 0.65);
-        ctx.strokeRect(cx + w * 0.22, cy - h * 0.3, w * 0.35, h * 0.65);
-        ctx.fillStyle = c2;
-        ctx.fillRect(cx + w * 0.57, cy - h * 0.15, w * 0.1, h * 0.45);
-        ctx.strokeRect(cx + w * 0.57, cy - h * 0.15, w * 0.1, h * 0.45);
+        ctx.fillRect(-w * 0.8, h * 0.12, w * 1.6, h * 0.5);
+        ctx.strokeRect(-w * 0.8, h * 0.12, w * 1.6, h * 0.5);
+        // 挡风玻璃
         ctx.fillStyle = '#8abbd8';
-        ctx.fillRect(cx + w * 0.24, cy - h * 0.25, w * 0.08, h * 0.4);
-        ctx.fillStyle = '#ffdd66';
-        ctx.beginPath(); ctx.arc(cx + w * 0.67, cy + h * 0.05, sz * 0.05, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(cx + w * 0.67, cy + h * 0.2, sz * 0.05, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#fff'; ctx.fillRect(cx - w * 0.2, cy - h * 0.32, sz * 0.22, sz * 0.22);
+        ctx.fillRect(-w * 0.6, h * 0.45, w * 1.2, h * 0.12);
+        // 日军标志
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(-sz * 0.08, -h * 0.1, sz * 0.16, sz * 0.16);
         ctx.fillStyle = '#c33';
-        ctx.beginPath(); ctx.arc(cx - w * 0.2 + sz * 0.11, cy - h * 0.32 + sz * 0.11, sz * 0.07, 0, Math.PI * 2); ctx.fill();
-        ctx.restore();
+        ctx.beginPath(); ctx.arc(0, -h * 0.1 + sz * 0.08, sz * 0.05, 0, Math.PI * 2); ctx.fill();
+        // 车头灯
+        ctx.fillStyle = '#ffdd66';
+        ctx.beginPath(); ctx.arc(-w * 0.6, h * 0.6, sz * 0.04, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(w * 0.6, h * 0.6, sz * 0.04, 0, Math.PI * 2); ctx.fill();
     }
 
-    drawArmored(cx, cy, sz, c1, c2) {
+    // --- 俯视装甲车 ---
+    drawArmored(sz, c1, c2) {
         const ctx = this.ctx;
-        ctx.save();
-        const w = sz * 1.5, h = sz * 0.8;
+        const w = sz * 0.42, h = sz * 0.75;
+
+        // 车轮 (两侧各2个)
         ctx.fillStyle = '#1a1a1a';
-        for (const wx of [-0.65, -0.25, 0.15, 0.55]) {
-            ctx.beginPath(); ctx.arc(cx + w * wx, cy + h * 0.65, sz * 0.12, 0, Math.PI * 2); ctx.fill();
+        for (const wy of [-0.3, 0.25]) {
+            ctx.beginPath(); ctx.arc(-w - sz * 0.08, h * wy, sz * 0.1, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(w + sz * 0.08, h * wy, sz * 0.1, 0, Math.PI * 2); ctx.fill();
         }
-        ctx.fillStyle = c1; ctx.strokeStyle = '#111'; ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(cx - w * 0.8, cy + h * 0.4);
-        ctx.lineTo(cx - w * 0.6, cy - h * 0.45);
-        ctx.lineTo(cx + w * 0.6, cy - h * 0.45);
-        ctx.lineTo(cx + w * 0.8, cy + h * 0.4);
-        ctx.closePath(); ctx.fill(); ctx.stroke();
-        ctx.strokeStyle = '#222'; ctx.lineWidth = 0.8;
-        ctx.beginPath(); ctx.moveTo(cx - w * 0.1, cy - h * 0.45); ctx.lineTo(cx - w * 0.2, cy + h * 0.4); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(cx + w * 0.3, cy - h * 0.45); ctx.lineTo(cx + w * 0.4, cy + h * 0.4); ctx.stroke();
-        ctx.fillStyle = '#3a5a6a';
-        ctx.fillRect(cx + w * 0.45, cy - h * 0.2, w * 0.12, h * 0.3);
-        ctx.fillRect(cx - w * 0.55, cy - h * 0.15, w * 0.1, h * 0.2);
-        ctx.fillStyle = c2; ctx.strokeStyle = '#111'; ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.ellipse(cx - w * 0.05, cy - h * 0.55, sz * 0.28, sz * 0.2, 0, 0, Math.PI * 2);
-        ctx.fill(); ctx.stroke();
-        ctx.strokeStyle = '#333'; ctx.lineWidth = Math.max(2, sz * 0.08);
-        ctx.beginPath(); ctx.moveTo(cx + sz * 0.15, cy - h * 0.55);
-        ctx.lineTo(cx + sz * 0.7, cy - h * 0.55); ctx.stroke();
-        ctx.fillStyle = '#999';
-        for (const [rx, ry] of [[-0.4, -0.15], [0.15, -0.15], [-0.4, 0.2], [0.15, 0.2]]) {
-            ctx.beginPath(); ctx.arc(cx + w * rx, cy + h * ry, 1.5, 0, Math.PI * 2); ctx.fill();
-        }
-        ctx.restore();
-    }
 
-    // --- 轻型坦克 ---
-    drawTank(cx, cy, sz, c1, c2) {
-        const ctx = this.ctx;
-        ctx.save();
-        const w = sz * 1.7, h = sz * 0.75;
-        const trackH = sz * 0.28;
-        ctx.fillStyle = '#222'; ctx.strokeStyle = '#111'; ctx.lineWidth = 1;
-        this._drawTrack(cx, cy - h * 0.5, w, trackH, sz);
-        this._drawTrack(cx, cy + h * 0.5 - trackH, w, trackH, sz);
-        ctx.fillStyle = c1; ctx.strokeStyle = '#111'; ctx.lineWidth = 2;
+        // 装甲车身 (梯形)
+        ctx.fillStyle = c1; ctx.strokeStyle = '#111'; ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.moveTo(cx - w * 0.85, cy + h * 0.5 - trackH);
-        ctx.lineTo(cx - w * 0.7, cy - h * 0.5 + trackH);
-        ctx.lineTo(cx + w * 0.7, cy - h * 0.5 + trackH);
-        ctx.lineTo(cx + w * 0.85, cy + h * 0.5 - trackH);
+        ctx.moveTo(-w * 0.7, -h * 0.6);
+        ctx.lineTo(w * 0.7, -h * 0.6);
+        ctx.lineTo(w, h * 0.45);
+        ctx.lineTo(w * 0.8, h * 0.6);
+        ctx.lineTo(-w * 0.8, h * 0.6);
+        ctx.lineTo(-w, h * 0.45);
         ctx.closePath(); ctx.fill(); ctx.stroke();
-        ctx.strokeStyle = '#222'; ctx.lineWidth = 0.8;
-        ctx.beginPath(); ctx.moveTo(cx, cy - h * 0.5 + trackH); ctx.lineTo(cx, cy + h * 0.5 - trackH); ctx.stroke();
-        ctx.fillStyle = c2; ctx.strokeStyle = '#111'; ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.arc(cx - w * 0.08, cy, sz * 0.38, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-        ctx.fillStyle = '#333';
-        ctx.beginPath(); ctx.arc(cx - w * 0.15, cy - sz * 0.05, sz * 0.1, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = '#111'; ctx.lineWidth = 0.8; ctx.stroke();
-        ctx.fillStyle = '#333'; ctx.strokeStyle = '#111'; ctx.lineWidth = 1;
-        const barrelW = sz * 0.14, barrelL = sz * 1.4;
-        ctx.fillRect(cx + sz * 0.2, cy - barrelW / 2, barrelL, barrelW);
-        ctx.strokeRect(cx + sz * 0.2, cy - barrelW / 2, barrelL, barrelW);
-        ctx.fillStyle = '#1a1a1a';
-        ctx.fillRect(cx + sz * 0.2 + barrelL - sz * 0.06, cy - barrelW * 0.7, sz * 0.06, barrelW * 1.4);
-        ctx.restore();
-    }
 
-    // --- 重型坦克 (更大更厚) ---
-    drawHeavyTank(cx, cy, sz, c1, c2) {
-        const ctx = this.ctx;
-        ctx.save();
-        const w = sz * 1.85, h = sz * 0.9;
-        const trackH = sz * 0.32;
-        ctx.fillStyle = '#222'; ctx.strokeStyle = '#111'; ctx.lineWidth = 1;
-        this._drawTrack(cx, cy - h * 0.5, w, trackH, sz);
-        this._drawTrack(cx, cy + h * 0.5 - trackH, w, trackH, sz);
-        // 车体 (更厚)
-        ctx.fillStyle = c1; ctx.strokeStyle = '#111'; ctx.lineWidth = 2.5;
-        ctx.beginPath();
-        ctx.moveTo(cx - w * 0.85, cy + h * 0.5 - trackH);
-        ctx.lineTo(cx - w * 0.7, cy - h * 0.5 + trackH);
-        ctx.lineTo(cx + w * 0.7, cy - h * 0.5 + trackH);
-        ctx.lineTo(cx + w * 0.85, cy + h * 0.5 - trackH);
-        ctx.closePath(); ctx.fill(); ctx.stroke();
         // 装甲接缝
-        ctx.strokeStyle = '#333'; ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.moveTo(cx - w * 0.25, cy - h * 0.5 + trackH); ctx.lineTo(cx - w * 0.3, cy + h * 0.5 - trackH); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(cx + w * 0.25, cy - h * 0.5 + trackH); ctx.lineTo(cx + w * 0.3, cy + h * 0.5 - trackH); ctx.stroke();
-        // 侧裙甲
-        ctx.fillStyle = '#333'; ctx.globalAlpha = 0.6;
-        ctx.fillRect(cx - w * 0.82, cy - h * 0.5, w * 1.64, trackH * 0.4);
-        ctx.fillRect(cx - w * 0.82, cy + h * 0.5 - trackH * 0.4, w * 1.64, trackH * 0.4);
-        ctx.globalAlpha = 1;
-        // 炮塔 (更大)
-        ctx.fillStyle = c2; ctx.strokeStyle = '#111'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(cx - w * 0.06, cy, sz * 0.46, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.strokeStyle = '#222'; ctx.lineWidth = 0.8;
+        ctx.beginPath(); ctx.moveTo(-w * 0.5, -h * 0.6); ctx.lineTo(-w * 0.6, h * 0.4); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(w * 0.5, -h * 0.6); ctx.lineTo(w * 0.6, h * 0.4); ctx.stroke();
+
+        // 观察窗
+        ctx.fillStyle = '#3a5a6a';
+        ctx.fillRect(-w * 0.3, h * 0.25, w * 0.6, h * 0.12);
+
+        // 炮塔 (椭圆)
+        ctx.fillStyle = c2; ctx.strokeStyle = '#111'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.ellipse(0, -h * 0.08, sz * 0.22, sz * 0.18, 0, 0, Math.PI * 2);
+        ctx.fill(); ctx.stroke();
+
+        // 机枪 (向前 = +y)
+        ctx.strokeStyle = '#333'; ctx.lineWidth = Math.max(2, sz * 0.07);
+        ctx.beginPath(); ctx.moveTo(0, sz * 0.08); ctx.lineTo(0, sz * 0.55); ctx.stroke();
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(-sz * 0.04, sz * 0.5, sz * 0.08, sz * 0.08);
+
+        // 铆钉
+        ctx.fillStyle = '#999';
+        for (const [rx, ry] of [[-0.25, -0.35], [0.25, -0.35], [-0.25, 0.2], [0.25, 0.2]]) {
+            ctx.beginPath(); ctx.arc(w * rx * 2, h * ry, 1.5, 0, Math.PI * 2); ctx.fill();
+        }
+    }
+
+    // --- 俯视履带 (纵向, 在车体两侧) ---
+    _drawTrackV(tx, ty, trackW, trackH, sz) {
+        const ctx = this.ctx;
+        const r = trackW * 0.5;
+        ctx.fillStyle = '#222';
+        ctx.beginPath();
+        ctx.moveTo(tx, ty + r);
+        ctx.arcTo(tx, ty, tx + trackW, ty, r);
+        ctx.lineTo(tx + trackW, ty);
+        ctx.arcTo(tx + trackW, ty + trackH, tx, ty + trackH, r);
+        ctx.lineTo(tx, ty + trackH);
+        ctx.arcTo(tx, ty + trackH, tx, ty, r);
+        ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = '#111'; ctx.lineWidth = 1; ctx.stroke();
+        // 履带纹理 (横线)
+        ctx.strokeStyle = '#444'; ctx.lineWidth = 1;
+        const steps = Math.floor(trackH / (trackW * 0.6));
+        for (let i = 1; i < steps; i++) {
+            const ly = ty + i * (trackH / steps);
+            ctx.beginPath(); ctx.moveTo(tx + 1, ly); ctx.lineTo(tx + trackW - 1, ly); ctx.stroke();
+        }
+        // 负重轮
+        ctx.fillStyle = '#333';
+        const wheelCount = Math.max(2, Math.floor(trackH / (trackW * 1.2)));
+        for (let i = 0; i < wheelCount; i++) {
+            const wy = ty + trackW * 0.5 + i * ((trackH - trackW) / Math.max(1, wheelCount - 1));
+            ctx.beginPath(); ctx.arc(tx + trackW * 0.5, wy, trackW * 0.3, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#555';
+            ctx.beginPath(); ctx.arc(tx + trackW * 0.5, wy, trackW * 0.12, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#333';
+        }
+    }
+
+    // --- 俯视轻型坦克 ---
+    drawTank(sz, c1, c2) {
+        const ctx = this.ctx;
+        const bw = sz * 0.5, bh = sz * 0.85;
+        const trackW = sz * 0.16, trackH = bh * 1.6;
+
+        // 履带 (左右两条)
+        this._drawTrackV(-bw * 0.9 - trackW, -trackH * 0.5, trackW, trackH, sz);
+        this._drawTrackV(bw * 0.9, -trackH * 0.5, trackW, trackH, sz);
+
+        // 车体 (六边形)
+        ctx.fillStyle = c1; ctx.strokeStyle = '#111'; ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(-bw * 0.7, -bh * 0.6);
+        ctx.lineTo(bw * 0.7, -bh * 0.6);
+        ctx.lineTo(bw * 0.85, -bh * 0.3);
+        ctx.lineTo(bw * 0.85, bh * 0.45);
+        ctx.lineTo(bw * 0.6, bh * 0.6);
+        ctx.lineTo(-bw * 0.6, bh * 0.6);
+        ctx.lineTo(-bw * 0.85, bh * 0.45);
+        ctx.lineTo(-bw * 0.85, -bh * 0.3);
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+
+        // 车体接缝
+        ctx.strokeStyle = '#222'; ctx.lineWidth = 0.8;
+        ctx.beginPath(); ctx.moveTo(-bw * 0.5, -bh * 0.55); ctx.lineTo(-bw * 0.5, bh * 0.55); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(bw * 0.5, -bh * 0.55); ctx.lineTo(bw * 0.5, bh * 0.55); ctx.stroke();
+
+        // 炮塔 (圆形, 略偏后)
+        ctx.fillStyle = c2; ctx.strokeStyle = '#111'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(0, -bh * 0.08, sz * 0.3, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
         // 指挥塔
         ctx.fillStyle = '#444';
-        ctx.beginPath(); ctx.arc(cx - w * 0.22, cy - sz * 0.12, sz * 0.13, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(0, -bh * 0.2, sz * 0.08, 0, Math.PI * 2); ctx.fill();
         ctx.strokeStyle = '#111'; ctx.lineWidth = 0.8; ctx.stroke();
-        // 主炮 (更粗更长)
-        ctx.fillStyle = '#333'; ctx.strokeStyle = '#111'; ctx.lineWidth = 1.5;
-        const bW = sz * 0.2, bL = sz * 1.7;
-        ctx.fillRect(cx + sz * 0.3, cy - bW / 2, bL, bW);
-        ctx.strokeRect(cx + sz * 0.3, cy - bW / 2, bL, bW);
+
+        // 主炮 (向前 = +y)
+        ctx.fillStyle = '#333'; ctx.strokeStyle = '#111'; ctx.lineWidth = 1;
+        const barrelW = sz * 0.1, barrelL = sz * 0.9;
+        ctx.fillRect(-barrelW / 2, bh * 0.05, barrelW, barrelL);
+        ctx.strokeRect(-barrelW / 2, bh * 0.05, barrelW, barrelL);
         // 炮口制退器
         ctx.fillStyle = '#1a1a1a';
-        ctx.fillRect(cx + sz * 0.3 + bL - sz * 0.12, cy - bW * 0.8, sz * 0.12, bW * 1.6);
-        // 铆钉
-        ctx.fillStyle = '#888';
-        for (const [rx, ry] of [[-0.5, -0.15], [0.1, -0.15], [-0.5, 0.15], [0.1, 0.15], [-0.2, 0], [0.35, 0]]) {
-            ctx.beginPath(); ctx.arc(cx + w * rx, cy + h * ry, 2, 0, Math.PI * 2); ctx.fill();
-        }
-        ctx.restore();
+        ctx.fillRect(-barrelW * 0.8, bh * 0.05 + barrelL - sz * 0.05, barrelW * 1.6, sz * 0.05);
     }
 
-    // --- 扫雷车 ---
-    drawSweeper(cx, cy, sz, c1, c2) {
+    // --- 俯视重型坦克 ---
+    drawHeavyTank(sz, c1, c2) {
         const ctx = this.ctx;
-        ctx.save();
-        const w = sz * 1.5, h = sz * 0.85;
-        // 车轮
+        const bw = sz * 0.58, bh = sz * 0.95;
+        const trackW = sz * 0.2, trackH = bh * 1.65;
+
+        // 履带
+        this._drawTrackV(-bw * 0.88 - trackW, -trackH * 0.5, trackW, trackH, sz);
+        this._drawTrackV(bw * 0.88, -trackH * 0.5, trackW, trackH, sz);
+
+        // 侧裙甲
+        ctx.fillStyle = '#333'; ctx.globalAlpha = 0.6;
+        ctx.fillRect(-bw - trackW * 0.3, -trackH * 0.45, trackW * 0.5, trackH * 0.9);
+        ctx.fillRect(bw - trackW * 0.2, -trackH * 0.45, trackW * 0.5, trackH * 0.9);
+        ctx.globalAlpha = 1;
+
+        // 车体 (更厚实)
+        ctx.fillStyle = c1; ctx.strokeStyle = '#111'; ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-bw * 0.65, -bh * 0.65);
+        ctx.lineTo(bw * 0.65, -bh * 0.65);
+        ctx.lineTo(bw * 0.85, -bh * 0.35);
+        ctx.lineTo(bw * 0.85, bh * 0.5);
+        ctx.lineTo(bw * 0.55, bh * 0.65);
+        ctx.lineTo(-bw * 0.55, bh * 0.65);
+        ctx.lineTo(-bw * 0.85, bh * 0.5);
+        ctx.lineTo(-bw * 0.85, -bh * 0.35);
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+
+        // 装甲接缝
+        ctx.strokeStyle = '#333'; ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.moveTo(0, -bh * 0.6); ctx.lineTo(0, bh * 0.6); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(-bw * 0.8, 0); ctx.lineTo(bw * 0.8, 0); ctx.stroke();
+
+        // 炮塔 (更大)
+        ctx.fillStyle = c2; ctx.strokeStyle = '#111'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(0, -bh * 0.05, sz * 0.38, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+        // 指挥塔
+        ctx.fillStyle = '#444';
+        ctx.beginPath(); ctx.arc(-sz * 0.12, -bh * 0.18, sz * 0.1, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#111'; ctx.lineWidth = 0.8; ctx.stroke();
+
+        // 主炮 (更粗更长)
+        ctx.fillStyle = '#333'; ctx.strokeStyle = '#111'; ctx.lineWidth = 1.5;
+        const bW = sz * 0.14, bL = sz * 1.15;
+        ctx.fillRect(-bW / 2, bh * 0.08, bW, bL);
+        ctx.strokeRect(-bW / 2, bh * 0.08, bW, bL);
+        // 炮口制退器
         ctx.fillStyle = '#1a1a1a';
-        for (const wx of [-0.5, -0.1, 0.3]) {
-            ctx.beginPath(); ctx.arc(cx + w * wx, cy + h * 0.55, sz * 0.12, 0, Math.PI * 2); ctx.fill();
+        ctx.fillRect(-bW * 0.9, bh * 0.08 + bL - sz * 0.08, bW * 1.8, sz * 0.08);
+
+        // 铆钉
+        ctx.fillStyle = '#888';
+        for (const [rx, ry] of [[-0.5, -0.4], [0.5, -0.4], [-0.5, 0.3], [0.5, 0.3], [0, -0.55], [0, 0.5]]) {
+            ctx.beginPath(); ctx.arc(bw * rx, bh * ry, 1.8, 0, Math.PI * 2); ctx.fill();
         }
+    }
+
+    // --- 俯视扫雷车 ---
+    drawSweeper(sz, c1, c2) {
+        const ctx = this.ctx;
+        const w = sz * 0.4, h = sz * 0.7;
+
+        // 车轮 (两侧各2个)
+        ctx.fillStyle = '#1a1a1a';
+        for (const wy of [-0.25, 0.2]) {
+            ctx.beginPath(); ctx.arc(-w - sz * 0.07, h * wy, sz * 0.09, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(w + sz * 0.07, h * wy, sz * 0.09, 0, Math.PI * 2); ctx.fill();
+        }
+
         // 车体
         ctx.fillStyle = c1; ctx.strokeStyle = '#111'; ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.moveTo(cx - w * 0.65, cy + h * 0.35);
-        ctx.lineTo(cx - w * 0.5, cy - h * 0.35);
-        ctx.lineTo(cx + w * 0.45, cy - h * 0.35);
-        ctx.lineTo(cx + w * 0.6, cy + h * 0.35);
+        ctx.moveTo(-w * 0.7, -h * 0.55);
+        ctx.lineTo(w * 0.7, -h * 0.55);
+        ctx.lineTo(w, h * 0.3);
+        ctx.lineTo(w * 0.8, h * 0.45);
+        ctx.lineTo(-w * 0.8, h * 0.45);
+        ctx.lineTo(-w, h * 0.3);
         ctx.closePath(); ctx.fill(); ctx.stroke();
-        // 驾驶舱
+
+        // 驾驶舱玻璃
         ctx.fillStyle = '#8abbd8';
-        ctx.fillRect(cx - w * 0.35, cy - h * 0.28, w * 0.15, h * 0.35);
-        // 扫雷臂
+        ctx.fillRect(-w * 0.4, h * 0.15, w * 0.8, h * 0.12);
+
+        // 扫雷臂 (从车前伸出)
         ctx.strokeStyle = '#888'; ctx.lineWidth = Math.max(3, sz * 0.1);
         ctx.beginPath();
-        ctx.moveTo(cx + w * 0.5, cy - h * 0.1);
-        ctx.lineTo(cx + w * 0.95, cy + h * 0.15);
+        ctx.moveTo(-sz * 0.05, h * 0.45);
+        ctx.lineTo(-sz * 0.05, h * 0.85);
         ctx.stroke();
-        // 扫雷滚筒
-        const rollerX = cx + w * 0.95, rollerY = cy + h * 0.25;
+        ctx.beginPath();
+        ctx.moveTo(sz * 0.05, h * 0.45);
+        ctx.lineTo(sz * 0.05, h * 0.85);
+        ctx.stroke();
+
+        // 扫雷滚筒 (横向圆柱)
+        const rollerY = h * 0.92;
         ctx.fillStyle = '#555'; ctx.strokeStyle = '#333'; ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.ellipse(rollerX, rollerY, sz * 0.28, sz * 0.12, 0, 0, Math.PI * 2);
+        ctx.beginPath(); ctx.ellipse(0, rollerY, sz * 0.32, sz * 0.1, 0, 0, Math.PI * 2);
         ctx.fill(); ctx.stroke();
+
         // 滚筒链条 (旋转动画)
         ctx.strokeStyle = '#999'; ctx.lineWidth = 1.5;
         for (let i = 0; i < 6; i++) {
             const a = (i / 6) * Math.PI * 2 + this.animTime * 6;
-            const sx = rollerX + Math.cos(a) * sz * 0.2;
-            const sy = rollerY + Math.sin(a) * sz * 0.08;
-            const ex = rollerX + Math.cos(a) * sz * 0.35;
-            const ey = rollerY + Math.sin(a) * sz * 0.14;
+            const sx = Math.cos(a) * sz * 0.24;
+            const sy = rollerY + Math.sin(a) * sz * 0.06;
+            const ex = Math.cos(a) * sz * 0.38;
+            const ey = rollerY + Math.sin(a) * sz * 0.1;
             ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke();
-            // 链锤头
             ctx.fillStyle = '#777';
-            ctx.beginPath(); ctx.arc(ex, ey, sz * 0.04, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(ex, ey, sz * 0.03, 0, Math.PI * 2); ctx.fill();
             ctx.strokeStyle = '#999'; ctx.lineWidth = 1.5;
         }
+
         // 警示标志
         ctx.fillStyle = '#ffaa00';
-        ctx.font = `bold ${Math.max(8, Math.floor(sz * 0.4))}px sans-serif`;
+        ctx.font = `bold ${Math.max(8, Math.floor(sz * 0.35))}px sans-serif`;
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText('⚠', cx, cy - h * 0.15);
-        ctx.restore();
-    }
-
-    _drawTrack(cx, ty, w, h, sz) {
-        const ctx = this.ctx;
-        ctx.fillStyle = '#222';
-        const r = h * 0.5;
-        ctx.beginPath();
-        ctx.moveTo(cx - w * 0.75, ty);
-        ctx.lineTo(cx + w * 0.75, ty);
-        ctx.arcTo(cx + w * 0.85, ty, cx + w * 0.85, ty + h, r);
-        ctx.lineTo(cx + w * 0.85, ty + h);
-        ctx.lineTo(cx - w * 0.85, ty + h);
-        ctx.arcTo(cx - w * 0.85, ty + h, cx - w * 0.85, ty, r);
-        ctx.closePath(); ctx.fill();
-        ctx.strokeStyle = '#111'; ctx.lineWidth = 1; ctx.stroke();
-        ctx.strokeStyle = '#444'; ctx.lineWidth = 1;
-        for (let i = -4; i <= 4; i++) {
-            const tx = cx + i * w * 0.18;
-            ctx.beginPath(); ctx.moveTo(tx, ty + 1); ctx.lineTo(tx, ty + h - 1); ctx.stroke();
-        }
-        ctx.fillStyle = '#333';
-        for (let i = -2; i <= 2; i++) {
-            const wx = cx + i * w * 0.3;
-            ctx.beginPath(); ctx.arc(wx, ty + h * 0.5, h * 0.3, 0, Math.PI * 2); ctx.fill();
-            ctx.fillStyle = '#555';
-            ctx.beginPath(); ctx.arc(wx, ty + h * 0.5, h * 0.12, 0, Math.PI * 2); ctx.fill();
-            ctx.fillStyle = '#333';
-        }
+        ctx.fillText('⚠', 0, -h * 0.2);
     }
 
     // ===== 特效 =====
@@ -763,5 +834,45 @@ class Renderer {
                 }
             }
         }
+    }
+
+    drawCountdown() {
+        const g = this.game, ctx = this.ctx;
+        const sec = Math.ceil(g.countdownTimer);
+        const frac = g.countdownTimer - Math.floor(g.countdownTimer);
+
+        // 地图中央大号倒计时数字
+        const mapCx = g.offsetX + (CONFIG.COLS * g.tileSize) / 2;
+        const mapCy = g.offsetY + (CONFIG.ROWS * g.tileSize) / 2;
+
+        ctx.save();
+        // 数字脉冲效果: 每秒跳一下
+        const pulse = 1 + Math.max(0, frac - 0.7) * 1.5;
+        const alpha = sec <= 5 ? 0.9 : 0.7;
+
+        ctx.globalAlpha = alpha;
+        ctx.font = `bold ${Math.floor(g.tileSize * 2.5 * pulse)}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        // 描边
+        ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+        ctx.lineWidth = 4;
+        ctx.strokeText(sec, mapCx, mapCy);
+
+        // 填色: 最后5秒变红
+        ctx.fillStyle = sec <= 5 ? '#e84a4a' : '#e8c44a';
+        ctx.fillText(sec, mapCx, mapCy);
+
+        // 提示文字
+        ctx.globalAlpha = 0.8;
+        ctx.font = `bold ${Math.floor(g.tileSize * 0.7)}px sans-serif`;
+        const hint = sec <= 5 ? '敌军接近!' : '快速布雷!';
+        ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+        ctx.lineWidth = 3;
+        ctx.strokeText(hint, mapCx, mapCy - g.tileSize * 2);
+        ctx.fillStyle = sec <= 5 ? '#ff6666' : '#f0e6c8';
+        ctx.fillText(hint, mapCx, mapCy - g.tileSize * 2);
+        ctx.restore();
     }
 }

@@ -103,7 +103,7 @@
         const sy = (cy - rect.top) * (canvas.height / rect.height);
         const {col, row} = game.screenToGrid(sx, sy);
 
-        if (game.state === 'prep' || game.state === 'wave') {
+        if (game.state === 'countdown' || game.state === 'wave') {
             if (game.selectedMine) {
                 if (!game.placeMine(col, row)) {
                     if (game.hasMineAt(col, row)) game.removeMine(col, row);
@@ -154,32 +154,36 @@
             '【目标】布置地雷阻击鬼子, 保卫村庄',
             '',
             '【操作】',
-            '  选择地雷 → 点击路径布雷',
+            '  点"开始战斗" → 15秒倒计时布雷',
+            '  倒计时结束后敌人开始进攻',
+            '  战斗中仍可补充布雷',
             '  点已有地雷可回收(退80%材料)',
-            '  战斗中也可以继续补充布雷',
             '',
             '【关卡】共7关, 每关3波',
             '  每关解锁新敌人和新地雷',
             '  通关后进入下一关(新地图/BGM)',
             '',
-            '【地雷】',
-            '  ⚡绊雷 — 反步兵, 附带流血',
-            '  ◉土雷 — 通用, 碎片溅射',
-            '  ⬢铁雷 — 高威力, 削减装甲',
-            '  ⊕反坦克雷 — 仅对车辆, 穿甲',
-            '  ⛓连环雷 — 连锁爆炸×3, 防扫雷',
-            '  ☄天雷 — 无视装甲, 眩晕, 防扫雷',
-            '  ◆穿甲雷 — 穿透重甲, 破甲一击',
-            '  ⊗磁性雷 — 反扫雷车, 磁感应',
+            '【地雷策略】',
+            '  🔥纯火药(反步兵, 工兵无法排除):',
+            '    ⚡绊雷 — 💥6 流血',
+            '    ◉土雷 — 💥10 碎片溅射',
+            '  🔩偏铁(反车辆/装甲):',
+            '    ⬢铁雷 — 🔩12💥4 通用, 削装甲',
+            '    ⊕反坦克雷 — 🔩18💥4 仅车辆, 穿甲',
+            '    ◆穿甲雷 — 🔩26💥6 破重甲',
+            '  💥偏火药(特效):',
+            '    ⛓连环雷 — 🔩10💥16 连锁×3, 防扫雷',
+            '    ☄天雷 — 🔩10💥28 无视装甲, 眩晕',
+            '    ⊗磁性雷 — 🔩8💥20 仅车辆, 防扫雷',
             '',
             '【敌人】',
-            '  步兵/骑兵/工兵/卡车/装甲车',
-            '  轻型坦克/重型坦克/扫雷车',
+            '  步兵/骑兵/工兵 — 缴获偏💥火药',
+            '  卡车/装甲车/坦克/扫雷车 — 缴获偏🔩铁',
             '  骑兵有25%闪避几率',
-            '  工兵会排除地雷, 优先消灭!',
-            '  坦克装甲厚, 需要高威力雷',
-            '  扫雷车会清除普通地雷',
-            '    只有防扫雷的雷能对付它!',
+            '  工兵排雷只能排含金属的雷!',
+            '    绊雷和土雷无金属, 工兵无法探测',
+            '  坦克装甲厚, 需要穿甲/天雷',
+            '  扫雷车清除金属雷, 防扫雷雷免疫',
             '',
             '【伤害减速】',
             '  受伤敌人速度与血量成正比(最低40%)',
@@ -190,9 +194,11 @@
             '  低伤害雷也能通过减速制造拥堵!',
             '',
             '【经济】',
-            '  击杀敌人缴获🔩铁和💥火药',
+            '  步兵类缴获偏火药, 车辆类缴获偏铁',
             '  每波结束有过关奖励',
-            '  合理选择雷种, 避免浪费材料',
+            '  资源不平衡时选对应雷种:',
+            '    火药多→绊雷/土雷/连环雷/天雷',
+            '    铁多→铁雷/反坦克雷/穿甲雷',
             '',
             '【房屋】',
             '  每座房3点HP, 全毁则游戏结束',
@@ -248,39 +254,13 @@
     updateWavePreview();
     requestAnimationFrame(loop);
 
-    // 开场难度选择
+    // 开场提示
     setTimeout(() => {
-        const ov = document.getElementById('message-overlay');
-        const msgBox = document.getElementById('message-box');
-        const msgBtn = document.getElementById('msg-btn');
-        document.getElementById('msg-title').textContent = `地雷战 — ${LEVEL_DEFS[0].name}`;
-        document.getElementById('msg-text').textContent =
-            '鬼子要进村了!\n选择地雷 → 点路径布雷\n点已有地雷可回收(退80%材料)\n⚠️ 工兵会排雷, 注意纵深布置!\n房屋全毁则游戏结束\n\n共7关, 每关3波, 逐步解锁新装备\n\n请选择难度:';
-        msgBtn.style.display = 'none';
-        ov.classList.remove('hidden');
-
-        const row = document.createElement('div');
-        row.style.cssText = 'display:flex;gap:10px;justify-content:center;margin-top:12px;';
-        const diffs = [
-            { name:'新手', desc:'缴获100%', mul:1.0, bg:'linear-gradient(180deg,#4a8a4a 0%,#2a5a2a 100%)', bd:'#5aaa5a' },
-            { name:'专家', desc:'缴获90%', mul:0.9, bg:'linear-gradient(180deg,#c4881a 0%,#8a5a0a 100%)', bd:'#e8a83a' },
-            { name:'大师', desc:'缴获80%', mul:0.8, bg:'linear-gradient(180deg,#c44a3a 0%,#8b2e1a 100%)', bd:'#e8773a' },
-        ];
-        for (const d of diffs) {
-            const b = document.createElement('button');
-            b.style.cssText = `background:${d.bg};color:#fff;border:2px solid ${d.bd};border-radius:8px;padding:8px 16px;font-size:14px;font-weight:bold;cursor:pointer;font-family:inherit;transition:transform 0.15s;`;
-            b.innerHTML = `${d.name}<br><span style="font-size:11px;font-weight:normal;opacity:0.85">${d.desc}</span>`;
-            b.addEventListener('click', () => {
-                game.dropMul = d.mul;
-                game.difficultyName = d.name;
-                ov.classList.add('hidden');
-                msgBtn.style.display = '';
-                row.remove();
+        game.showMessage(`地雷战 — ${LEVEL_DEFS[0].name}`,
+            '鬼子要进村了!\n\n点"开始战斗"后有15秒布雷时间\n选择地雷 → 点路径布雷\n倒计时结束敌人开始进攻\n战斗中仍可补充布雷\n点已有地雷可回收(退80%材料)\n\n⚠️ 工兵会排雷, 注意纵深布置!\n房屋全毁则游戏结束\n\n共7关, 每关3波, 逐步解锁新装备',
+            () => {
                 audioManager.init();
                 audioManager.resume();
             });
-            row.appendChild(b);
-        }
-        msgBox.appendChild(row);
     }, 300);
 })();

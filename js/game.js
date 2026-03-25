@@ -41,14 +41,21 @@ class Game {
         this.spawnQueue = [];
         this.spawnTimer = 0;
         this.waveEndTimer = 0;
+        this.countdownTimer = 0;
         this.audio = null;
 
         this.waveStats = this._emptyStats();
         this.onWaveReset = null;
 
-        // 难度
-        this.dropMul = 1.0;
-        this.difficultyName = '新手';
+        // 难度 (DDA自适应, 无手动选择)
+
+        // 动态难度调节 (DDA)
+        this.dda = {
+            mod: 1.0,           // 难度系数 (0.75=容易 ~ 1.25=困难)
+            history: [],        // 近3波表现评分 (0~1)
+            housesAtStart: CONFIG.HOUSE_COUNT, // 本波开始时的房屋数
+            streak: 0,          // 连续满分波数 (用于触发"爽感爆发")
+        };
 
         this.loadLevel(1);
     }
@@ -128,8 +135,10 @@ class Game {
     // ===== 开始波次 =====
     startWave() {
         if (this.state !== 'prep') return;
-        this.state = 'wave';
+        this.state = 'countdown';
+        this.countdownTimer = CONFIG.COUNTDOWN_TIME;
         this.waveEndTimer = 0;
+        this.dda.housesAtStart = this.housesLeft;
         if (this.audio) this.audio.playWaveStart();
 
         const waveDef = this.currentLevel.waves[this.waveInLevel];
@@ -148,7 +157,7 @@ class Game {
         this.spawnTimer = 0;
 
         const btn = document.getElementById('start-wave-btn');
-        btn.textContent = '战斗中...';
+        btn.textContent = `布雷! ${Math.ceil(this.countdownTimer)}s`;
         btn.disabled = true;
         btn.classList.add('in-wave');
     }
@@ -156,7 +165,7 @@ class Game {
     spawnEnemy(type, pathIdx) {
         const et = ENEMY_TYPES[type];
         const waveOff = Math.max(0, this.wave - (et.firstWave || 1));
-        const hp = Math.floor(et.hp * Math.pow(CONFIG.ENEMY_HP_SCALE, waveOff));
+        const hp = Math.floor(et.hp * Math.pow(CONFIG.ENEMY_HP_SCALE, waveOff) * this.dda.mod);
         const armor = et.armor + Math.floor(this.wave / 5) * CONFIG.ENEMY_ARMOR_PER_5;
         const path = this.pathPixels[pathIdx];
         this.enemies.push(new Enemy(type, hp, et.speed, armor, path, this.wave, pathIdx));
@@ -169,6 +178,23 @@ class Game {
         for (const mine of this.mines) {
             if (!mine.exploded && mine.armTimer > 0) mine.armTimer -= dt;
             if (mine.exploded && mine.explosionTimer > 0) mine.explosionTimer -= dt;
+        }
+
+        // 倒计时阶段: 玩家布雷, 敌人未出现
+        if (this.state === 'countdown') {
+            this.countdownTimer -= dt;
+            const btn = document.getElementById('start-wave-btn');
+            const sec = Math.ceil(this.countdownTimer);
+            if (sec <= 5) {
+                btn.textContent = `敌军接近! ${sec}s`;
+            } else {
+                btn.textContent = `布雷! ${sec}s`;
+            }
+            if (this.countdownTimer <= 0) {
+                this.countdownTimer = 0;
+                this.state = 'wave';
+                btn.textContent = '战斗中...';
+            }
         }
 
         if (this.state === 'wave') {
@@ -255,6 +281,7 @@ class Game {
             }
             for (const mine of this.mines) {
                 if (mine.exploded || mine.armTimer > 0) continue;
+                if (MINE_TYPES[mine.type].noMetal) continue; // 无金属, 探测不到
                 const dx = enemy.x - mine.col, dy = enemy.y - mine.row;
                 if (Math.sqrt(dx * dx + dy * dy) < 0.6) {
                     enemy.disarming = true;
@@ -271,6 +298,7 @@ class Game {
                 const mine = this.mines[i];
                 if (mine.exploded) continue;
                 if (MINE_TYPES[mine.type].sweepImmune) continue;
+                if (MINE_TYPES[mine.type].noMetal) continue; // 无金属, 扫不到
                 const dx = enemy.x - mine.col, dy = enemy.y - mine.row;
                 if (Math.sqrt(dx * dx + dy * dy) < et.sweepRange) {
                     mine.exploded = true;
@@ -481,9 +509,11 @@ class Game {
     onEnemyKilled(enemy) {
         const et = ENEMY_TYPES[enemy.type];
         const scale = Math.pow(CONFIG.RESOURCE_DROP_SCALE, this.wave - 1);
-        let iron = Math.floor(et.dropIron * scale * this.dropMul);
-        let powder = Math.floor(et.dropPowder * scale * this.dropMul);
-        if (et.bonusDrop) { iron += Math.floor(et.bonusDrop.iron * this.dropMul); powder += Math.floor(et.bonusDrop.powder * this.dropMul); }
+        // DDA缴获补偿: 苦战时多给一点, 碾压时不扣
+        const ddaDrop = this.dda.mod < 1.0 ? (1 + (1 - this.dda.mod) * 0.5) : 1.0;
+        let iron = Math.floor(et.dropIron * scale * ddaDrop);
+        let powder = Math.floor(et.dropPowder * scale * ddaDrop);
+        if (et.bonusDrop) { iron += et.bonusDrop.iron; powder += et.bonusDrop.powder; }
         this.iron += iron;
         this.powder += powder;
         this.score += Math.floor(enemy.maxHp / 10);
@@ -549,13 +579,61 @@ class Game {
         return lines.join('\n');
     }
 
+    // ===== 动态难度调节 (DDA) =====
+    _ddaEvaluate() {
+        // 计算本波表现评分 (0~1)
+        const waveDef = this.currentLevel.waves[this.waveInLevel];
+        const totalSpawned = waveDef ? waveDef.reduce((sum, g) => sum + g.n, 0) : 1;
+        const totalKilled = Object.values(this.waveStats.kills).reduce((a, b) => a + b, 0);
+        const killRate = Math.min(1, totalKilled / Math.max(1, totalSpawned));
+
+        const housesLost = this.dda.housesAtStart - this.housesLeft;
+        const housePenalty = housesLost * 0.2; // 每丢1座房扣0.2
+
+        const placed = Object.values(this.waveStats.minesPlaced).reduce((a, b) => a + b, 0);
+        const detonated = Object.values(this.waveStats.minesDetonated).reduce((a, b) => a + b, 0);
+        const mineEff = placed > 0 ? Math.min(1, detonated / placed) : 1;
+
+        // 综合评分: 击杀率权重最大, 房屋损失是惩罚项
+        return Math.max(0, Math.min(1, killRate * 0.65 + mineEff * 0.15 + 0.2 - housePenalty));
+    }
+
+    _ddaAdjust() {
+        const score = this._ddaEvaluate();
+        this.dda.history.push(score);
+        if (this.dda.history.length > 3) this.dda.history.shift();
+
+        const avg = this.dda.history.reduce((a, b) => a + b, 0) / this.dda.history.length;
+
+        // 连续满分追踪 (用于"爽感波次")
+        if (score >= 0.95) this.dda.streak++;
+        else this.dda.streak = 0;
+
+        if (avg >= 0.9) {
+            // 碾压: 缓慢加难 (让玩家多享受一会儿成就感)
+            this.dda.mod = Math.min(1.25, this.dda.mod + 0.03);
+        } else if (avg >= 0.7) {
+            // 甜区: 缓慢回归1.0
+            this.dda.mod += (1.0 - this.dda.mod) * 0.08;
+        } else if (avg >= 0.5) {
+            // 吃力: 快速降难
+            this.dda.mod = Math.max(0.75, this.dda.mod - 0.06);
+        } else {
+            // 危机: 大幅降难
+            this.dda.mod = Math.max(0.7, this.dda.mod - 0.10);
+        }
+    }
+
     waveComplete() {
+        this._ddaAdjust();
         this.state = 'prep';
         if (this.audio) this.audio.playVictory();
         const report = this.generateBattleReport();
 
-        const bonusIron = 8 + this.wave * 2;
-        const bonusPowder = 8 + this.wave * 2;
+        // 波次奖励: DDA苦战补偿
+        const ddaBonus = this.dda.mod < 0.9 ? 1.3 : 1.0;
+        const bonusIron = Math.floor((10 + this.wave * 2) * ddaBonus);
+        const bonusPowder = Math.floor((10 + this.wave * 2) * ddaBonus);
         this.iron += bonusIron;
         this.powder += bonusPowder;
 
@@ -609,7 +687,7 @@ class Game {
         this.state = 'gameOver';
         const report = this.generateBattleReport();
         this.showMessage('村庄沦陷!',
-            `房屋全部被烧毁!\n难度: ${this.difficultyName}\n坚守到第${this.level}关 第${this.waveInLevel + 1}波\n得分: ${this.score}\n\n${report}`,
+            `房屋全部被烧毁!\n坚守到第${this.level}关 第${this.waveInLevel + 1}波\n得分: ${this.score}\n\n${report}`,
             () => location.reload());
     }
 
@@ -618,7 +696,7 @@ class Game {
         if (this.audio) this.audio.playVictory();
         const report = this.generateBattleReport();
         this.showMessage('伟大胜利!',
-            `成功保卫村庄, 击退全部${LEVEL_DEFS.length}关!\n难度: ${this.difficultyName}\n得分: ${this.score}  剩余房屋: ${this.housesLeft}\n\n${report}`,
+            `成功保卫村庄, 击退全部${LEVEL_DEFS.length}关!\n得分: ${this.score}  剩余房屋: ${this.housesLeft}\n\n${report}`,
             () => location.reload());
     }
 
