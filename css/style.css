@@ -1,0 +1,143 @@
+* {
+    margin: 0; padding: 0; box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none; -webkit-user-select: none;
+}
+body {
+    background: #1a1a1a; overflow: hidden;
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    touch-action: none;
+}
+#game-container {
+    display: flex; flex-direction: column;
+    height: 100vh; height: 100dvh;
+    max-width: 900px; margin: 0 auto;
+}
+#gameCanvas {
+    flex: 1; width: 100%; min-height: 0;
+    display: block; cursor: crosshair;
+}
+#ui-panel {
+    background: linear-gradient(180deg, #2d2b23 0%, #1e1d17 100%);
+    border-top: 2px solid #5a5540;
+    padding: 6px 10px;
+    display: flex; flex-direction: column; gap: 4px;
+    flex-shrink: 0;
+}
+#resources {
+    display: flex; justify-content: center; gap: 20px;
+    font-size: 13px; color: #c4b998;
+}
+.res b { color: #f0e6c8; font-size: 14px; }
+
+/* === 地雷按钮 === */
+#mine-selector {
+    display: flex; gap: 5px; justify-content: center; flex-wrap: wrap;
+}
+.mine-btn {
+    display: flex; flex-direction: column; align-items: center;
+    padding: 4px 7px; border: 2px solid #5a5540; border-radius: 8px;
+    background: #3a3728; color: #c4b998; font-size: 11px;
+    cursor: pointer; min-width: 54px; transition: all 0.15s;
+    position: relative; overflow: hidden;
+}
+.mine-btn:active, .mine-btn.selected {
+    border-color: #e8c44a; background: #4a4530; color: #f0e6c8;
+    transform: scale(1.05);
+}
+/* 未解锁 — 半透明锁 */
+.mine-btn.locked {
+    opacity: 0.35; pointer-events: none;
+}
+.mine-btn.locked::after {
+    content: '🔒';
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 18px; z-index: 2;
+    filter: drop-shadow(0 0 3px rgba(0,0,0,0.8));
+}
+/* 没材料 — 灰色 */
+.mine-btn.no-res {
+    background: #2a2a28;
+    border-color: #444;
+    color: #666;
+}
+.mine-btn.no-res .icon { filter: grayscale(1) brightness(0.5); }
+.mine-btn.no-res .cost { color: #844; }
+
+.mine-btn .icon { font-size: 18px; line-height: 1; margin-bottom: 1px; }
+.mine-btn .name { font-weight: bold; font-size: 10px; }
+.mine-btn .cost { font-size: 9px; color: #9a9070; margin-top: 1px; }
+.mine-btn .desc-tag {
+    font-size: 8px; color: #7a7a5a;
+    max-width: 52px; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+}
+
+/* === 底部信息栏 === */
+#game-info {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 8px; font-size: 13px; color: #c4b998;
+}
+#game-info b { color: #f0e6c8; }
+#level-info { color: #e8c44a; white-space: nowrap; }
+#wave-preview { font-size: 11px; color: #9a9070; flex: 1; text-align: center; }
+
+#help-btn, #mute-btn {
+    background: #3a3728; border: 2px solid #5a5540; border-radius: 8px;
+    padding: 3px 8px; font-size: 14px; cursor: pointer;
+    color: #c4b998; font-family: inherit;
+}
+#speed-btn {
+    background: #3a3728; border: 2px solid #5a5540; border-radius: 8px;
+    padding: 3px 8px; font-size: 14px; cursor: pointer;
+    color: #c4b998; font-family: inherit;
+}
+#speed-btn.active { border-color: #e8c44a; color: #e8c44a; }
+#speed-btn.hidden { display: none; }
+
+#start-wave-btn {
+    background: linear-gradient(180deg, #c44a1a 0%, #8b2e0a 100%);
+    color: #fff; border: 2px solid #e8773a; border-radius: 8px;
+    padding: 5px 14px; font-size: 13px; font-weight: bold;
+    cursor: pointer; font-family: inherit; transition: all 0.15s;
+}
+#start-wave-btn:active { transform: scale(0.95); }
+#start-wave-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+#start-wave-btn.in-wave {
+    background: linear-gradient(180deg, #555 0%, #333 100%);
+    border-color: #777;
+}
+
+/* === 弹窗 === */
+#message-overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.7);
+    display: flex; align-items: center; justify-content: center; z-index: 100;
+}
+#message-overlay.hidden { display: none; }
+#message-box {
+    background: linear-gradient(180deg, #3a3728 0%, #2d2b23 100%);
+    border: 2px solid #e8c44a; border-radius: 12px;
+    padding: 24px 28px; text-align: center; max-width: 380px;
+}
+#msg-title { color: #e8c44a; font-size: 22px; margin-bottom: 8px; }
+#msg-text {
+    color: #c4b998; font-size: 13px; margin-bottom: 16px;
+    line-height: 1.6; white-space: pre-line; text-align: left;
+    max-height: 55vh; overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+#msg-btn {
+    background: linear-gradient(180deg, #c44a1a 0%, #8b2e0a 100%);
+    color: #fff; border: 2px solid #e8773a; border-radius: 8px;
+    padding: 8px 24px; font-size: 15px; font-weight: bold;
+    cursor: pointer; font-family: inherit;
+}
+
+@media (max-height: 500px) {
+    #ui-panel { padding: 3px 8px; gap: 2px; }
+    .mine-btn { padding: 2px 5px; min-width: 46px; }
+    .mine-btn .icon { font-size: 14px; }
+    #resources { font-size: 11px; gap: 12px; }
+}
