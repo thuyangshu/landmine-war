@@ -108,6 +108,41 @@ body {
 #speed-btn.hidden { display: none; }
 
 
+/* === 汉堡菜单 === */
+#menu-btn {
+    position: fixed; top: 8px; right: 8px; z-index: 10;
+    background: rgba(30,29,23,0.7); border: 1px solid #5a5540;
+    border-radius: 6px; width: 32px; height: 32px;
+    font-size: 18px; color: #c4b998; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-family: inherit; line-height: 1;
+    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+}
+#menu-btn:active { background: rgba(60,58,46,0.9); }
+#menu-btn.hidden { display: none; }
+
+#menu-overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.5); z-index: 50;
+    display: flex; align-items: center; justify-content: center;
+}
+#menu-overlay.hidden { display: none; }
+#menu-box {
+    background: linear-gradient(180deg, #3a3728 0%, #2d2b23 100%);
+    border: 2px solid #e8c44a; border-radius: 12px;
+    padding: 20px 28px; display: flex; flex-direction: column; gap: 10px;
+    min-width: 180px;
+}
+#menu-box button {
+    background: #3a3728; border: 2px solid #5a5540; border-radius: 8px;
+    padding: 8px 16px; font-size: 14px; color: #c4b998;
+    cursor: pointer; font-family: inherit; transition: all 0.15s;
+}
+#menu-box button:active { transform: scale(0.95); }
+#menu-restart { border-color: #c45a3a; color: #e8a070; }
+#menu-quit { border-color: #5a5540; color: #7a7a5a; font-size: 12px; }
+#menu-close { border-color: #5a5540; }
+
 /* === 弹窗 === */
 #message-overlay {
     position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -270,6 +305,9 @@ body {
         padding: 2px 6px;
         font-size: 12px;
     }
+
+    /* 汉堡菜单位置 */
+    #menu-btn { top: 4px; right: 4px; width: 28px; height: 28px; font-size: 16px; }
 
     /* 弹窗适配 */
     #message-box {

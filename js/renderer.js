@@ -841,38 +841,40 @@ class Renderer {
         const sec = Math.ceil(g.countdownTimer);
         const frac = g.countdownTimer - Math.floor(g.countdownTimer);
 
-        // 地图中央大号倒计时数字
         const mapCx = g.offsetX + (CONFIG.COLS * g.tileSize) / 2;
-        const mapCy = g.offsetY + (CONFIG.ROWS * g.tileSize) / 2;
+        const mapCy = g.offsetY + g.tileSize * 2.5;
 
+        // 半透明背景胶囊, 局部区域, 不遮挡操作
+        const pillW = g.tileSize * 5;
+        const pillH = g.tileSize * 1.6;
         ctx.save();
-        // 数字脉冲效果: 每秒跳一下
-        const pulse = 1 + Math.max(0, frac - 0.7) * 1.5;
-        const alpha = sec <= 5 ? 0.9 : 0.7;
+        ctx.globalAlpha = 0.55;
+        ctx.fillStyle = '#1a1a1a';
+        ctx.beginPath();
+        const r = pillH / 2;
+        ctx.roundRect(mapCx - pillW / 2, mapCy - pillH / 2, pillW, pillH, r);
+        ctx.fill();
+        ctx.globalAlpha = 1;
 
-        ctx.globalAlpha = alpha;
-        ctx.font = `bold ${Math.floor(g.tileSize * 2.5 * pulse)}px sans-serif`;
+        // 倒计时数字
+        const pulse = 1 + Math.max(0, frac - 0.7) * 1.0;
+        const numSize = Math.floor(g.tileSize * 1.2 * pulse);
+        ctx.font = `bold ${numSize}px sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-
-        // 描边
-        ctx.strokeStyle = 'rgba(0,0,0,0.6)';
-        ctx.lineWidth = 4;
-        ctx.strokeText(sec, mapCx, mapCy);
-
-        // 填色: 最后5秒变红
         ctx.fillStyle = sec <= 5 ? '#e84a4a' : '#e8c44a';
-        ctx.fillText(sec, mapCx, mapCy);
+        ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+        ctx.lineWidth = 3;
+        ctx.strokeText(sec, mapCx + g.tileSize * 0.6, mapCy);
+        ctx.fillText(sec, mapCx + g.tileSize * 0.6, mapCy);
 
         // 提示文字
-        ctx.globalAlpha = 0.8;
-        ctx.font = `bold ${Math.floor(g.tileSize * 0.7)}px sans-serif`;
-        const hint = sec <= 5 ? '敌军接近!' : '快速布雷!';
-        ctx.strokeStyle = 'rgba(0,0,0,0.6)';
-        ctx.lineWidth = 3;
-        ctx.strokeText(hint, mapCx, mapCy - g.tileSize * 2);
-        ctx.fillStyle = sec <= 5 ? '#ff6666' : '#f0e6c8';
-        ctx.fillText(hint, mapCx, mapCy - g.tileSize * 2);
+        const hint = sec <= 5 ? '敌军接近' : '布雷时间';
+        ctx.font = `bold ${Math.floor(g.tileSize * 0.5)}px sans-serif`;
+        ctx.fillStyle = sec <= 5 ? '#ff8888' : '#f0e6c8';
+        ctx.strokeText(hint, mapCx - g.tileSize * 0.7, mapCy);
+        ctx.fillText(hint, mapCx - g.tileSize * 0.7, mapCy);
+
         ctx.restore();
     }
 }

@@ -200,7 +200,7 @@
         muteBtn.textContent = muted ? '🔇' : '🔊';
     });
 
-    // --- 更多菜单 (手机端) ---
+    // --- 更多菜单 (手机端 detail-panel) ---
     const detailPanel = document.getElementById('detail-panel');
     document.getElementById('more-btn').addEventListener('click', (e) => {
         e.stopPropagation();
@@ -209,6 +209,27 @@
     detailPanel.addEventListener('click', (e) => { e.stopPropagation(); });
     document.addEventListener('click', () => { detailPanel.classList.remove('show'); });
     canvas.addEventListener('touchstart', () => { detailPanel.classList.remove('show'); }, true);
+
+    // --- 汉堡菜单 (重玩/退出) ---
+    const menuBtn = document.getElementById('menu-btn');
+    const menuOverlay = document.getElementById('menu-overlay');
+    menuBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        menuOverlay.classList.remove('hidden');
+    });
+    document.getElementById('menu-close').addEventListener('click', () => {
+        menuOverlay.classList.add('hidden');
+    });
+    document.getElementById('menu-restart').addEventListener('click', () => {
+        menuOverlay.classList.add('hidden');
+        game.restartLevel();
+        buildMineUI();
+        updateWavePreview();
+        game.startWave();
+    });
+    document.getElementById('menu-quit').addEventListener('click', () => {
+        location.reload();
+    });
 
     speedBtn.addEventListener('click', () => {
         gameSpeed = gameSpeed === 1 ? 2 : gameSpeed === 2 ? 3 : 1;
@@ -256,6 +277,7 @@
                 audioManager.resume();
                 audioManager.startBGM(0);
                 speedBtn.classList.remove('hidden');
+                menuBtn.classList.remove('hidden');
                 game.startWave();
             },
             '开始游戏');

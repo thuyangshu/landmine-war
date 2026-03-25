@@ -79,6 +79,25 @@ class Game {
         if (this.audio && this.audio.bgmPlaying) this.audio.stopBGM();
     }
 
+    restartLevel() {
+        this.waveInLevel = 0;
+        this.iron = CONFIG.START_IRON;
+        this.powder = CONFIG.START_POWDER;
+        this.houses.forEach(h => { h.hp = CONFIG.HOUSE_HP; });
+        this.housesLeft = CONFIG.HOUSE_COUNT;
+        this.mines = [];
+        this.enemies = [];
+        this.effects = [];
+        this.floatingTexts = [];
+        this.spawnQueue = [];
+        this.state = 'prep';
+        this.dda.mod = 1.0;
+        this.dda.history = [];
+        this.dda.streak = 0;
+        this.resetWaveStats();
+        this.updateUI();
+    }
+
     _emptyStats() {
         return { kills: {}, ironGained: 0, powderGained: 0, minesPlaced: {}, minesDetonated: {}, minesDisarmed: 0 };
     }
