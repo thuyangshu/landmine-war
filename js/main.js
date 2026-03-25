@@ -11,11 +11,14 @@
     let gameSpeed = 1;
 
     // --- Resize ---
+    const MOBILE_BP = 640;
     function resize() {
         const container = document.getElementById('game-container');
-        const panel = document.getElementById('ui-panel');
+        const isMobile = window.innerWidth <= MOBILE_BP;
         const availW = container.clientWidth;
-        const availH = container.clientHeight - panel.offsetHeight;
+        const availH = isMobile
+            ? container.clientHeight
+            : container.clientHeight - document.getElementById('ui-panel').offsetHeight;
 
         const tsW = Math.floor(availW / CONFIG.COLS);
         const tsH = Math.floor(availH / CONFIG.ROWS);
@@ -204,6 +207,16 @@
         const muted = audioManager.toggleMute();
         muteBtn.textContent = muted ? '🔇' : '🔊';
     });
+
+    // --- 更多菜单 (手机端) ---
+    const detailPanel = document.getElementById('detail-panel');
+    document.getElementById('more-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        detailPanel.classList.toggle('show');
+    });
+    detailPanel.addEventListener('click', (e) => { e.stopPropagation(); });
+    document.addEventListener('click', () => { detailPanel.classList.remove('show'); });
+    canvas.addEventListener('touchstart', () => { detailPanel.classList.remove('show'); }, true);
 
     speedBtn.addEventListener('click', () => {
         gameSpeed = gameSpeed === 1 ? 2 : gameSpeed === 2 ? 3 : 1;
