@@ -61,15 +61,24 @@
                 e.stopPropagation();
                 if (btn.classList.contains('locked')) return;
                 document.querySelectorAll('.mine-btn').forEach(b => b.classList.remove('selected'));
-                if (game.selectedMine === key) {
-                    game.selectedMine = null;
-                } else {
-                    game.selectedMine = key;
-                    btn.classList.add('selected');
-                }
+                game.selectedMine = key;
+                btn.classList.add('selected');
             });
 
             sel.appendChild(btn);
+        }
+
+        // 恢复或自动选中第一个可用雷种
+        if (game.selectedMine && game.currentLevel.mines.includes(game.selectedMine)) {
+            const cur = sel.querySelector(`.mine-btn[data-type="${game.selectedMine}"]`);
+            if (cur) cur.classList.add('selected');
+        } else {
+            const firstAvail = game.currentLevel.mines[0];
+            if (firstAvail) {
+                game.selectedMine = firstAvail;
+                const first = sel.querySelector(`.mine-btn[data-type="${firstAvail}"]`);
+                if (first) first.classList.add('selected');
+            }
         }
     }
     buildMineUI();

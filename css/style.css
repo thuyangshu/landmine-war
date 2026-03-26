@@ -32,6 +32,7 @@ body {
 
 /* === detail-panel: desktop 内联显示 === */
 #detail-panel { display: contents; }
+#detail-quit { display: none; }
 #more-btn { display: none; }
 
 /* === 地雷按钮 === */
@@ -295,6 +296,12 @@ body {
         width: 100%;
         text-align: center;
         padding: 4px 8px;
+    }
+    #detail-quit {
+        display: block;
+        color: #7a7a5a; font-size: 11px;
+        border-color: #444;
+        margin-top: 4px;
     }
 
     /* 显示更多按钮 */
